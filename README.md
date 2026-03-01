@@ -1,4 +1,4 @@
-## Cognitio Events Dashboard
+## Cognito Events Dashboard
 
 Real-time geopolitical events dashboard: conflict tracking, live air and maritime traffic, markets, and curated intel — built with Next.js (App Router), React, and Leaflet.
 
