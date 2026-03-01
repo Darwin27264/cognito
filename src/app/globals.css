@@ -1,26 +1,816 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
+  --color-background: #0a0a0a;
+  --color-foreground: #e0e0e0;
+
+  --color-tactical-black: #0a0a0a;
+  --color-tactical-dark: #111311;
+  --color-tactical-charcoal: #1a1c1a;
+  --color-tactical-gunmetal: #242824;
+  --color-tactical-steel: #2e322e;
+
+  --color-accent-amber: #d4a017;
+  --color-accent-amber-dim: #a67c00;
+  --color-accent-green: #39ff14;
+  --color-accent-green-dim: #1a7a0a;
+  --color-accent-red: #ff2020;
+  --color-accent-red-dim: #991010;
+
+  --color-olive-muted: #556b2f;
+  --color-olive-light: #6b8e23;
+
+  --color-panel: #111311;
+  --color-panel-border: #2e322e;
+  --color-panel-hover: #1a1c1a;
+
+  --color-text-primary: #e0e0e0;
+  --color-text-secondary: #8a8f8a;
+  --color-text-muted: #555a55;
+
   --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-mono: var(--font-roboto-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+* {
+  border-color: var(--color-panel-border);
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--color-tactical-black);
+  color: var(--color-text-primary);
+  font-family: var(--font-sans);
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--color-tactical-dark);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-tactical-steel);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-olive-muted);
+}
+
+/* ── Leaflet base ── */
+
+.leaflet-container {
+  background: #0a0a0a !important;
+  font-family: inherit !important;
+}
+
+.leaflet-tile-pane {
+  filter: brightness(0.35) contrast(1.2) saturate(0.3) hue-rotate(90deg);
+}
+
+.leaflet-control-attribution {
+  display: none !important;
+}
+
+/* ── Leaflet popup — dark brutalist card ── */
+
+/* Prevent popup open/close animation flicker; show content immediately (override Leaflet's .leaflet-fade-anim) */
+.leaflet-popup,
+.leaflet-popup-content-wrapper,
+.leaflet-popup-content {
+  transition: none !important;
+  animation: none !important;
+}
+.leaflet-popup {
+  opacity: 1 !important;
+}
+
+.leaflet-popup-content-wrapper {
+  background: #111311 !important;
+  border: 1px solid #2e322e !important;
+  border-radius: 0 !important;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.6) !important;
+  padding: 0 !important;
+  color: #e0e0e0 !important;
+}
+
+.leaflet-popup-content {
+  margin: 0 !important;
+  min-width: 200px !important;
+  font-family: var(--font-roboto-mono), ui-monospace, monospace !important;
+  font-size: 11px !important;
+  line-height: 1.5 !important;
+}
+
+.leaflet-popup-tip {
+  background: #111311 !important;
+}
+
+.leaflet-popup-close-button {
+  color: #555a55 !important;
+  font-size: 16px !important;
+  padding: 4px 6px !important;
+}
+
+.leaflet-popup-close-button:hover {
+  color: #d4a017 !important;
+}
+
+/* ── Popup card internals ── */
+
+.popup-card {
+  padding: 14px 16px;
+}
+
+.popup-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  margin-bottom: 10px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid #2e322e;
+}
+
+.popup-label--conflict {
+  color: #ff2020;
+}
+
+.popup-label--flight {
+  color: #c9a227;
+}
+
+.popup-label--seismic {
+  color: #eab308;
+}
+
+.popup-body {
+  font-size: 11px;
+  line-height: 1.5;
+  color: #e0e0e0;
+  margin-bottom: 6px;
+}
+
+.popup-meta {
+  font-size: 10px;
+  color: #555a55;
+  margin-bottom: 4px;
+}
+
+.popup-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: #d4a017;
+  text-decoration: none;
+  margin-top: 4px;
+  transition: color 150ms;
+}
+
+.popup-link:hover {
+  color: #39ff14;
+}
+
+.popup-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: 4px 0;
+  gap: 16px;
+}
+
+.popup-row-key {
+  font-size: 10px;
+  color: #555a55;
+  letter-spacing: 0.08em;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.popup-row-val {
+  font-size: 11px;
+  color: #e0e0e0;
+  font-weight: 600;
+  text-align: right;
+}
+
+/* ── Icon wrappers (transparent background) ── */
+
+.aircraft-icon-wrapper,
+.gdelt-icon-wrapper,
+.seismic-icon-wrapper,
+.satellite-icon-wrapper,
+.chokepoint-label-wrapper,
+.ship-icon-wrapper,
+.radiation-icon-wrapper,
+.cluster-icon-wrapper {
+  background: transparent !important;
+  border: none !important;
+}
+
+/* ── Aircraft SVG icons (GPU-accelerated transform) ── */
+
+.aircraft-icon-wrapper svg {
+  transform: translateZ(0);
+  transition: transform 0.3s ease-out;
+  will-change: transform;
+}
+
+/* ── Maritime AIS chevron ── */
+
+.ship-icon-wrapper svg {
+  transform: translateZ(0);
+  will-change: transform;
+}
+
+/* ── GDELT pulsing red diamond (opacity-only for high frame rate) ── */
+
+.gdelt-diamond {
+  display: block;
+  width: 10px;
+  height: 10px;
+  background: rgba(255, 32, 32, 0.7);
+  border: 1px solid #ff2020;
+  transform: rotate(45deg) translateZ(0);
+  box-shadow: 0 0 8px rgba(255, 32, 32, 0.5);
+  animation: gdelt-pulse 2s ease-in-out infinite;
+  will-change: opacity;
+}
+
+@keyframes gdelt-pulse {
+  0%, 100% { opacity: 0.85; }
+  50% { opacity: 1; }
+}
+
+/* ── NASA FIRMS thermal anomaly (orange/red glowing square) ── */
+
+.fire-icon-wrapper {
+  background: transparent !important;
+  border: none !important;
+}
+
+.fire-thermal-icon {
+  display: block;
+  width: 12px;
+  height: 12px;
+  background: rgba(180, 83, 9, 0.35);
+  border: 1px solid rgba(180, 83, 9, 0.6);
+  box-shadow: 0 0 8px rgba(180, 83, 9, 0.6), 0 0 14px rgba(180, 83, 9, 0.25);
+}
+
+/* ── Popup label fire ── */
+
+.popup-label--fire {
+  color: #b45309;
+}
+
+.popup-label--orbital {
+  color: #b24bf3;
+}
+
+/* ── Seismic icon (GPU transform for smooth animation) ── */
+
+.seismic-icon-wrapper svg {
+  transform: translateZ(0);
+  animation: seismic-shake 3s ease-in-out infinite;
+  will-change: transform;
+}
+
+@keyframes seismic-shake {
+  0%, 100% { transform: translate3d(0, 0, 0); }
+  10% { transform: translate3d(-1px, 0, 0); }
+  20% { transform: translate3d(1px, 0, 0); }
+  30% { transform: translate3d(0, 0, 0); }
+}
+
+/* ── Marker clusters ── */
+
+.cluster-conflict {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: rgba(255, 32, 32, 0.2);
+  border: 1.5px solid #ff2020;
+  color: #ff2020;
+  font-family: var(--font-roboto-mono), ui-monospace, monospace;
+  font-size: 11px;
+  font-weight: 700;
+  box-shadow: 0 0 12px rgba(255, 32, 32, 0.3);
+}
+
+.cluster-seismic {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: rgba(234, 179, 8, 0.15);
+  border: 1.5px solid #eab308;
+  color: #eab308;
+  font-family: var(--font-roboto-mono), ui-monospace, monospace;
+  font-size: 11px;
+  font-weight: 700;
+  box-shadow: 0 0 10px rgba(234, 179, 8, 0.25);
+}
+
+/* Fire cluster: square fire-box with count inside (matches single fire icon) */
+.cluster-fire-box {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(180, 83, 9, 0.3);
+  border: 1px solid rgba(180, 83, 9, 0.6);
+  box-shadow: 0 0 10px rgba(180, 83, 9, 0.5), 0 0 18px rgba(180, 83, 9, 0.2);
+  color: #e8a04a;
+  font-family: var(--font-roboto-mono), ui-monospace, monospace;
+  font-weight: 700;
+  text-shadow: 0 0 6px rgba(180, 83, 9, 0.8);
+}
+
+.cluster-aircraft {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: rgba(201, 162, 39, 0.25);
+  border: 1.5px solid #c9a227;
+  color: #c9a227;
+  font-family: var(--font-roboto-mono), ui-monospace, monospace;
+  font-size: 11px;
+  font-weight: 700;
+  box-shadow: 0 0 10px rgba(201, 162, 39, 0.35);
+}
+
+.cluster-maritime {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  min-width: inherit;
+  min-height: inherit;
+  border-radius: 50% !important;
+  background: rgba(34, 211, 238, 0.35) !important;
+  border: 1.5px solid #22d3ee !important;
+  color: #22d3ee !important;
+  font-family: var(--font-roboto-mono), ui-monospace, monospace !important;
+  font-size: 11px !important;
+  font-weight: 700 !important;
+  box-shadow: 0 0 10px rgba(34, 211, 238, 0.4) !important;
+  line-height: 1 !important;
+}
+
+.marker-cluster {
+  background: transparent !important;
+}
+
+.marker-cluster div {
+  background: transparent !important;
+}
+
+/* ── Chokepoint labels ── */
+
+.chokepoint-label {
+  display: block;
+  font-family: var(--font-roboto-mono), ui-monospace, monospace;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  color: #6b8e23;
+  text-align: center;
+  text-shadow: 0 0 6px rgba(107, 142, 35, 0.5), 0 1px 2px rgba(0, 0, 0, 0.8);
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+/* ── Layer Toggle Panel ── */
+
+.layer-toggle-panel {
+  background: rgba(10, 10, 10, 0.94);
+  border: 1px solid #2e322e;
+  font-family: var(--font-roboto-mono), ui-monospace, monospace;
+  backdrop-filter: blur(8px);
+  min-width: 160px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.6);
+}
+
+.layer-toggle-header {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  color: #8a8f8a;
+  padding: 8px 12px 6px;
+  border-bottom: 1px solid #2e322e;
+  background: rgba(26, 28, 26, 0.6);
+}
+
+.layer-toggle-group-label {
+  padding: 6px 12px 4px;
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: #555a55;
+}
+
+.layer-toggle-btn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 12px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: #555a55;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid rgba(46, 50, 46, 0.4);
+  cursor: pointer;
+  text-align: left;
+  transition: color 150ms, background 150ms;
+}
+
+.layer-toggle-btn:last-child {
+  border-bottom: none;
+}
+
+.layer-toggle-btn:hover {
+  background: rgba(46, 50, 46, 0.6);
+  color: #b0b5b0;
+}
+
+.layer-toggle-btn.active {
+  color: #e0e0e0;
+  background: rgba(46, 50, 46, 0.3);
+}
+
+.layer-toggle-indicator {
+  display: block;
+  width: 10px;
+  height: 10px;
+  border: 1.5px solid;
+  flex-shrink: 0;
+  position: relative;
+  transition: background 150ms, box-shadow 150ms;
+}
+
+.layer-toggle-btn.active .layer-toggle-indicator {
+  box-shadow: 0 0 6px currentColor;
+}
+
+/* ── Threat Level Badge ── */
+
+.threat-badge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 10px;
+  font-family: var(--font-roboto-mono), ui-monospace, monospace;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  border: 1px solid;
+}
+
+.threat-badge--low {
+  color: #39ff14;
+  border-color: rgba(57, 255, 20, 0.3);
+  background: rgba(57, 255, 20, 0.06);
+}
+
+.threat-badge--guarded {
+  color: #22d3ee;
+  border-color: rgba(34, 211, 238, 0.3);
+  background: rgba(34, 211, 238, 0.06);
+}
+
+.threat-badge--elevated {
+  color: #d4a017;
+  border-color: rgba(212, 160, 23, 0.3);
+  background: rgba(212, 160, 23, 0.06);
+  animation: pulse-amber 2s ease-in-out infinite;
+}
+
+.threat-badge--high {
+  color: #ff6b2b;
+  border-color: rgba(255, 107, 43, 0.4);
+  background: rgba(255, 107, 43, 0.08);
+  animation: pulse-amber 1.5s ease-in-out infinite;
+}
+
+.threat-badge--severe {
+  color: #ff2020;
+  border-color: rgba(255, 32, 32, 0.4);
+  background: rgba(255, 32, 32, 0.08);
+  animation: pulse-amber 1s ease-in-out infinite;
+}
+
+.threat-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+}
+
+/* ── Animations ── */
+
+@keyframes pulse-amber {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+@keyframes scan-line {
+  0% {
+    transform: translateY(-100%);
+  }
+  100% {
+    transform: translateY(100vh);
+  }
+}
+
+.animate-pulse-amber {
+  will-change: opacity;
+  animation: pulse-amber 2s ease-in-out infinite;
+}
+
+.ticker-scroll {
+  transform: translateZ(0);
+  will-change: transform;
+  animation: ticker-slide 30s linear infinite;
+}
+
+@keyframes ticker-slide {
+  0% { transform: translate3d(0, 0, 0); }
+  100% { transform: translate3d(-50%, 0, 0); }
+}
+
+/* ── Tracked Aircraft Bounding Box ── */
+
+.tracked-aircraft-box {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border: 1.5px solid rgba(201, 162, 39, 0.8);
+  box-shadow: 0 0 10px rgba(201, 162, 39, 0.35);
+  transform: translateZ(0);
+  animation: tracking-box-pulse 2s ease-in-out infinite;
+  will-change: opacity;
+}
+
+@keyframes tracking-box-pulse {
+  0%, 100% { opacity: 0.88; }
+  50% { opacity: 1; }
+}
+
+/* ── Tracked Satellite Bounding Box ── */
+
+.tracked-satellite-box {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border: 1.5px solid rgba(178, 75, 243, 0.85);
+  box-shadow: 0 0 12px rgba(178, 75, 243, 0.5);
+  transform: translateZ(0);
+  animation: tracking-satellite-pulse 2s ease-in-out infinite;
+  will-change: opacity;
+}
+
+@keyframes tracking-satellite-pulse {
+  0%, 100% { opacity: 0.85; }
+  50% { opacity: 1; }
+}
+
+/* ── Radiation sensors (Safecast) ── */
+
+.radiation-dot {
+  display: block;
+  width: 10px;
+  height: 10px;
+  border-radius: 9999px;
+}
+
+.radiation-point-low {
+  border: 1px solid rgba(57, 255, 20, 0.65);
+  background: rgba(57, 255, 20, 0.08);
+}
+
+.radiation-point-med {
+  border: 1px solid rgba(234, 179, 8, 0.8);
+  background: rgba(234, 179, 8, 0.4);
+  box-shadow: 0 0 8px rgba(234, 179, 8, 0.5);
+}
+
+.radiation-point-high {
+  border: 1px solid rgba(255, 32, 32, 0.9);
+  background: rgba(255, 32, 32, 0.5);
+  box-shadow: 0 0 14px rgba(255, 32, 32, 0.9), 0 0 20px rgba(255, 32, 32, 0.5);
+}
+
+@keyframes radiation-pulse-critical {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 0.8;
+  }
+  50% {
+    transform: scale(1.6);
+    opacity: 1;
+  }
+}
+
+.critical-radiation-pulse {
+  transform-origin: center;
+  animation: radiation-pulse-critical 1.3s ease-in-out infinite;
+}
+
+/* ── Aircraft Tracking Panel ── */
+
+.tracking-panel {
+  background: rgba(10, 10, 10, 0.94);
+  border: 1px solid #2e322e;
+  font-family: var(--font-roboto-mono), ui-monospace, monospace;
+  backdrop-filter: blur(8px);
+  min-width: 220px;
+  max-width: 260px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.6);
+}
+
+.tracking-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  color: #c9a227;
+  padding: 8px 12px 6px;
+  border-bottom: 1px solid #2e322e;
+  background: rgba(26, 28, 26, 0.6);
+}
+
+.tracking-panel-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  color: #555a55;
+  cursor: pointer;
+  padding: 2px;
+  transition: color 150ms;
+}
+
+.tracking-panel-close:hover {
+  color: #c9a227;
+}
+
+.tracking-panel-body {
+  padding: 10px 12px;
+}
+
+.tracking-signal-lost {
+  font-size: 10px;
+  color: #555a55;
+  letter-spacing: 0.08em;
+  text-align: center;
+  padding: 8px 0;
+}
+
+.tracking-signal-lost span {
+  color: #ff2020;
+  display: block;
+  margin-bottom: 4px;
+}
+
+/* ── Layer Loading Spinner ── */
+
+.layer-loading-spinner {
+  margin-left: auto;
+  flex-shrink: 0;
+  transform: translateZ(0);
+  animation: layer-spin 0.8s linear infinite;
+  will-change: transform;
+}
+
+@keyframes layer-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ── Popup Track Button (icon only) ── */
+
+.popup-track-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  margin-bottom: 10px;
+  color: #c9a227;
+  background: rgba(26, 28, 26, 0.8);
+  border: 1px solid rgba(201, 162, 39, 0.4);
+  cursor: pointer;
+  transition: background 150ms, border-color 150ms, color 150ms, box-shadow 150ms;
+  flex-shrink: 0;
+}
+
+.popup-track-btn:hover {
+  background: rgba(46, 50, 46, 0.9);
+  border-color: rgba(201, 162, 39, 0.7);
+  box-shadow: 0 0 8px rgba(201, 162, 39, 0.2);
+}
+
+.popup-track-btn--active {
+  color: #ff2020;
+  border-color: rgba(255, 32, 32, 0.45);
+}
+
+.popup-track-btn--active:hover {
+  background: rgba(46, 50, 46, 0.9);
+  border-color: rgba(255, 32, 32, 0.7);
+  box-shadow: 0 0 8px rgba(255, 32, 32, 0.2);
+}
+
+/* ── Multi-Tracking Panel Entries ── */
+
+.tracking-panel-scroll {
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.tracking-entry {
+  padding: 8px 0;
+  border-bottom: 1px solid rgba(46, 50, 46, 0.5);
+}
+
+.tracking-entry:last-child {
+  border-bottom: none;
+}
+
+.tracking-entry-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+
+.tracking-entry-callsign {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: #c9a227;
+}
+
+/* ── Hide scrollbar (e.g. left market panel) ── */
+
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
+/* ── Custom scrollbar (left panel sections) ── */
+
+.custom-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-tactical-steel) var(--color-tactical-dark);
+}
+
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: var(--color-tactical-dark);
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: var(--color-tactical-steel);
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: var(--color-olive-muted);
+}
+
+/* ── Layout/scroll performance: containment so repaints stay local (data unchanged) ── */
+
+.scroll-contain {
+  contain: layout paint;
+  overflow-anchor: auto;
+}
+
+.panel-contain {
+  contain: layout style;
 }
