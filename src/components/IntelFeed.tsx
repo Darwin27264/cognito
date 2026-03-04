@@ -4,6 +4,7 @@ import { memo, useEffect, useState, useCallback, useRef } from "react";
 import { FileText, ExternalLink, Shield } from "lucide-react";
 
 import { INTEL_POLL_MS } from "@/lib/apiConfig";
+import { useReload } from "@/context/ReloadContext";
 
 interface IntelArticle {
   title: string;
@@ -104,6 +105,7 @@ function IntelFeed() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
+   const { reloadToken } = useReload();
 
   const load = useCallback((isInitial: boolean) => {
     abortRef.current?.abort();
@@ -134,6 +136,11 @@ function IntelFeed() {
       abortRef.current?.abort();
     };
   }, [load]);
+
+  useEffect(() => {
+    if (!reloadToken) return;
+    load(false);
+  }, [reloadToken, load]);
 
   return (
     <section className="flex flex-col h-full bg-panel border border-panel-border">

@@ -94,42 +94,60 @@ function refreshInBackground() {
 }
 
 export async function GET() {
-  const now = Date.now();
+  try {
+    const now = Date.now();
 
-  // If cache is fresh, return it immediately and skip any API call
-  if (gdeltCache && now - gdeltCache.timestamp < GDELT_CACHE_TTL_MS) {
-    // Refresh in background if older than 10 minutes
-    if (now - gdeltCache.timestamp > 10 * 60 * 1000) {
-      refreshInBackground();
+    // If cache is fresh, return it immediately and skip any API call
+    if (gdeltCache && now - gdeltCache.timestamp < GDELT_CACHE_TTL_MS) {
+      // Refresh in background if older than 10 minutes
+      if (now - gdeltCache.timestamp > 10 * 60 * 1000) {
+        refreshInBackground();
+      }
+      return NextResponse.json(
+        {
+          events: gdeltCache.events,
+          source: "gdelt",
+          timestamp: new Date().toISOString(),
+        },
+        {
+          headers: {
+            "Cache-Control":
+              "public, s-maxage=3600, stale-while-revalidate=7200",
+          },
+        }
+      );
     }
+
+    // No cache — return fallback instantly and fetch real data in background
+    gdeltCache = { events: FALLBACK_EVENTS, timestamp: now };
+    refreshInBackground();
     return NextResponse.json(
       {
-        events: gdeltCache.events,
-        source: "gdelt",
+        events: FALLBACK_EVENTS,
+        source: "fallback",
         timestamp: new Date().toISOString(),
       },
       {
         headers: {
-          "Cache-Control":
-            "public, s-maxage=3600, stale-while-revalidate=7200",
+          "Cache-Control": "public, s-maxage=60, stale-while-revalidate=300",
+        },
+      }
+    );
+  } catch (error) {
+    // Absolute fallback if something unexpected happens.
+    return NextResponse.json(
+      {
+        events: FALLBACK_EVENTS,
+        source: "fallback-error",
+        timestamp: new Date().toISOString(),
+        error: error instanceof Error ? error.message : "GDELT handler failed",
+      },
+      {
+        status: 200,
+        headers: {
+          "Cache-Control": "public, s-maxage=60, stale-while-revalidate=300",
         },
       }
     );
   }
-
-  // No cache — return fallback instantly and fetch real data in background
-  gdeltCache = { events: FALLBACK_EVENTS, timestamp: now };
-  refreshInBackground();
-  return NextResponse.json(
-    {
-      events: FALLBACK_EVENTS,
-      source: "fallback",
-      timestamp: new Date().toISOString(),
-    },
-    {
-      headers: {
-        "Cache-Control": "public, s-maxage=60, stale-while-revalidate=300",
-      },
-    }
-  );
 }

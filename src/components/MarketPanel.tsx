@@ -3,6 +3,7 @@
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { BarChart3 } from "lucide-react";
 import { MARKETS_POLL_MS } from "@/lib/apiConfig";
+import { useReload } from "@/context/ReloadContext";
 
 interface MarketQuote {
   symbol: string;
@@ -83,6 +84,7 @@ export default function MarketPanel() {
   const [lastUpdated, setLastUpdated] = useState<string | undefined>(undefined);
   const controllerRef = useRef<AbortController | null>(null);
   const requestIdRef = useRef(0);
+  const { reloadToken } = useReload();
 
   const fetchMarkets = useCallback(async () => {
     controllerRef.current?.abort();
@@ -127,6 +129,11 @@ export default function MarketPanel() {
       controllerRef.current?.abort();
     };
   }, [fetchMarkets]);
+
+  useEffect(() => {
+    if (!reloadToken) return;
+    fetchMarkets();
+  }, [reloadToken, fetchMarkets]);
 
   return (
     <section className="flex flex-col h-full bg-zinc-950 border border-zinc-800">

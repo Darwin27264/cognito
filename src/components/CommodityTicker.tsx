@@ -3,6 +3,7 @@
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { TrendingUp, TrendingDown, Minus, RotateCw } from "lucide-react";
 import { COMMODITIES_POLL_MS, THREAT_LEVEL_POLL_MS } from "@/lib/apiConfig";
+import { useReload } from "@/context/ReloadContext";
 
 interface CommodityData {
   symbol: string;
@@ -87,6 +88,7 @@ function CommodityTicker() {
   const [loading, setLoading] = useState(true);
   const [eventCount, setEventCount] = useState(0);
   const mountedRef = useRef(true);
+  const { reloadToken, triggerReload } = useReload();
 
   const fetchData = useCallback(async () => {
     try {
@@ -127,6 +129,12 @@ function CommodityTicker() {
       clearInterval(threatInterval);
     };
   }, [fetchData, fetchThreatLevel]);
+
+  useEffect(() => {
+    if (!reloadToken) return;
+    fetchData();
+    fetchThreatLevel();
+  }, [reloadToken, fetchData, fetchThreatLevel]);
 
   const level = computeThreatLevel(eventCount);
 
@@ -192,12 +200,12 @@ function CommodityTicker() {
             )}
           </div>
 
-          {/* Reload: full page refresh */}
+          {/* Reload: trigger smart data refresh without full page reload */}
           <button
             type="button"
-            onClick={() => window.location.reload()}
+            onClick={triggerReload}
             className="shrink-0 flex items-center gap-1.5 font-mono text-[10px] text-text-muted hover:text-accent-amber transition-colors focus:outline-none focus:ring-1 focus:ring-panel-border rounded px-1.5 py-0.5"
-            title="Reload page"
+            title="Refresh live data"
           >
             <RotateCw className="w-3 h-3" />
             RELOAD

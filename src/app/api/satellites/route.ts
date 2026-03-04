@@ -74,9 +74,14 @@ export async function GET() {
       }
     );
   } catch (e) {
+    // Always respond with 200 + structured error so the client UI degrades gracefully.
     return NextResponse.json(
-      { satellites: [], error: String(e) },
-      { headers: { "Cache-Control": "public, s-maxage=60" } }
+      {
+        satellites: [],
+        timestamp: new Date().toISOString(),
+        error: e instanceof Error ? e.message : String(e),
+      },
+      { status: 200, headers: { "Cache-Control": "public, s-maxage=60" } }
     );
   }
 }

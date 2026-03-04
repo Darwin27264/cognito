@@ -8,6 +8,7 @@ import { MarketPanelSkeleton } from "@/components/MarketPanel";
 import { CyberGridSkeleton } from "@/components/CyberGrid";
 import StatusBar from "@/components/StatusBar";
 import { LayerFreshnessProvider } from "@/context/LayerFreshnessContext";
+import { ReloadProvider } from "@/context/ReloadContext";
 
 const MapSkeleton = memo(function MapSkeleton() {
   return (
@@ -66,34 +67,36 @@ const CyberGrid = dynamic(() => import("@/components/CyberGrid"), {
 export default function Dashboard() {
   return (
     <LayerFreshnessProvider>
-      <div className="flex flex-col h-screen overflow-hidden">
-        <CommodityTicker />
+      <ReloadProvider>
+        <div className="flex flex-col h-screen overflow-hidden">
+          <CommodityTicker />
 
-        <main className="flex-1 grid grid-cols-1 lg:grid-cols-12 min-h-0">
-          <aside className="hidden lg:flex lg:col-span-2 flex-col h-full min-h-0 border-r border-zinc-800">
-            <div className="flex flex-col flex-1 min-h-0 w-full">
-              <div className="h-[80%] min-h-0 overflow-y-auto custom-scrollbar scroll-contain flex flex-col border-b border-zinc-800">
-                <Suspense fallback={<MarketPanelFallback />}>
-                  <MarketPanel />
-                </Suspense>
+          <main className="flex-1 grid grid-cols-1 lg:grid-cols-[1.6fr_minmax(0,8.4fr)_2fr] min-h-0">
+            <aside className="hidden lg:flex flex-col h-full min-h-0 border-r border-zinc-800">
+              <div className="flex flex-col flex-1 min-h-0 w-full">
+                <div className="h-[80%] min-h-0 overflow-y-auto custom-scrollbar scroll-contain flex flex-col border-b border-zinc-800">
+                  <Suspense fallback={<MarketPanelFallback />}>
+                    <MarketPanel />
+                  </Suspense>
+                </div>
+                <div className="h-[20%] min-h-0 overflow-y-auto custom-scrollbar scroll-contain flex flex-col">
+                  <Suspense fallback={<CyberGridFallback />}>
+                    <CyberGrid />
+                  </Suspense>
+                </div>
               </div>
-              <div className="h-[20%] min-h-0 overflow-y-auto custom-scrollbar scroll-contain flex flex-col">
-                <Suspense fallback={<CyberGridFallback />}>
-                  <CyberGrid />
-                </Suspense>
-              </div>
+            </aside>
+            <div className="min-h-[400px] lg:min-h-0">
+              <ConflictMap />
             </div>
-          </aside>
-          <div className="min-h-[400px] lg:min-h-0 lg:col-span-8">
-            <ConflictMap />
-          </div>
-          <div className="border-l border-panel-border min-h-[300px] lg:min-h-0 lg:col-span-2">
-            <IntelFeed />
-          </div>
-        </main>
+            <div className="border-l border-panel-border min-h-[300px] lg:min-h-0">
+              <IntelFeed />
+            </div>
+          </main>
 
-        <StatusBar />
-      </div>
+          <StatusBar />
+        </div>
+      </ReloadProvider>
     </LayerFreshnessProvider>
   );
 }

@@ -4,6 +4,7 @@ import { memo, useEffect, useState, useMemo, useCallback, useRef } from "react";
 import useSWR from "swr";
 import { getSatelliteInfo } from "tle.js";
 import { useLayerFreshness } from "@/context/LayerFreshnessContext";
+import { useReload } from "@/context/ReloadContext";
 import {
   FLIGHTS_POLL_MS,
   GDELT_POLL_MS,
@@ -480,6 +481,20 @@ function maritimeClusterIcon(cluster: { getChildCount(): number }): L.DivIcon {
   });
 }
 
+function radiationClusterIcon(cluster: { getChildCount(): number }): L.DivIcon {
+  const n = cluster.getChildCount();
+  const size = n > 200 ? 52 : n > 80 ? 46 : n > 20 ? 40 : 36;
+  const fontSize = n > 999 ? 8 : n > 99 ? 9 : 10;
+  // Radiation trefoil SVG (classic 3-blade nuclear symbol)
+  const trefoil = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="rgba(57,255,20,0.95)" style="flex-shrink:0;filter:drop-shadow(0 0 3px rgba(57,255,20,0.7))"><circle cx="12" cy="12" r="3"/><path d="M12 2a10 10 0 0 1 8.66 5l-5 2.89A4 4 0 0 0 12 8V2z"/><path d="M12 2a10 10 0 0 0-8.66 5l5 2.89A4 4 0 0 1 12 8V2z"/><path d="M3.34 17a10 10 0 0 0 17.32 0l-5-2.89a4 4 0 0 1-7.32 0L3.34 17z"/></svg>`;
+  return L.divIcon({
+    html: `<div class="cluster-radiation" style="width:${size}px;height:${size}px;min-width:${size}px;min-height:${size}px;">${trefoil}<span style="font-size:${fontSize}px;font-weight:800;line-height:1;">${n}</span></div>`,
+    className: "cluster-icon-wrapper",
+    iconSize: [size, size],
+    iconAnchor: [size / 2, size / 2],
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Layer Toggle Control (memoized so map updates don't re-render this panel)
 // ---------------------------------------------------------------------------
@@ -567,7 +582,13 @@ export default function ConflictMap() {
   const [bounds, setBounds] = useState<MapBounds | null>(null);
   const [visibleLngRange, setVisibleLngRange] = useState<{ lomin: number; lomax: number } | null>(null);
   const [mapZoom, setMapZoom] = useState(3);
-  const { setLayerTimestamp, setAircraftApiStatus } = useLayerFreshness();
+  const {
+    setLayerTimestamp,
+    setAircraftApiStatus,
+    setLayerStatusCode,
+    layerStatusCodes,
+    aircraftApiStatus,
+  } = useLayerFreshness();
   const [layers, setLayers] = useState<Record<LayerKey, boolean>>({
     aircraft: true,
     gdelt: true,
@@ -588,6 +609,7 @@ export default function ConflictMap() {
   const [aisShips, setAisShips] = useState<Record<string, AisShip>>({});
   const [radiationSensors, setRadiationSensors] = useState<RadiationSensor[]>([]);
   const [loadingRadiation, setLoadingRadiation] = useState(false);
+  const { reloadToken } = useReload();
 
   const fetcher = useCallback((url: string) => fetch(url).then((r) => r.json()), []);
   const flightsKey = useMemo(() => {
@@ -598,7 +620,7 @@ export default function ConflictMap() {
     )}&lamax=${round(bounds.lamax)}&lomax=${round(bounds.lomax)}`;
   }, [bounds]);
 
-  const { data: flightsResponse, isLoading: swrLoadingFlights } = useSWR(
+  const { data: flightsResponse, isLoading: swrLoadingFlights, mutate: mutateFlights } = useSWR(
     flightsKey,
     fetcher,
     {
@@ -649,6 +671,14 @@ export default function ConflictMap() {
         openskyRateLimitRemaining: rateLimit?.remaining ?? null,
         openskyRetryAfterSeconds: rateLimit?.retryAfterSeconds ?? null,
       });
+      const codes = [
+        apiStatus.opensky,
+        apiStatus.adsbfi,
+        apiStatus.adsblol,
+        apiStatus.theairtraffic,
+      ].filter((c): c is number => typeof c === "number");
+      const layerCode = codes.length ? Math.min(...codes) : null;
+      setLayerStatusCode("aircraft", layerCode);
     }
   }, [
     flightsResponse?.timestamp,
@@ -656,6 +686,7 @@ export default function ConflictMap() {
     flightsResponse?.rateLimit,
     setLayerTimestamp,
     setAircraftApiStatus,
+    setLayerStatusCode,
   ]);
 
   const mountedRef = useRef(true);
@@ -667,12 +698,15 @@ export default function ConflictMap() {
         if (!mountedRef.current) return;
         setEvents(d.events ?? []);
         if (d.timestamp) setLayerTimestamp("gdelt", d.timestamp);
+        setLayerStatusCode("gdelt", d.error ? 500 : 200);
       })
-      .catch(() => {})
+      .catch(() => {
+        setLayerStatusCode("gdelt", 500);
+      })
       .finally(() => {
         if (mountedRef.current) setLoadingEvents(false);
       });
-  }, [setLayerTimestamp]);
+  }, [setLayerTimestamp, setLayerStatusCode]);
 
   const fetchSeismic = useCallback(() => {
     fetch("/api/seismic")
@@ -682,11 +716,13 @@ export default function ConflictMap() {
         setSeismic(d.events ?? []);
         if (d.timestamp) setLayerTimestamp("seismic", d.timestamp);
       })
-      .catch(() => {})
+      .catch(() => {
+        setLayerStatusCode("seismic", 500);
+      })
       .finally(() => {
         if (mountedRef.current) setLoadingSeismic(false);
       });
-  }, [setLayerTimestamp]);
+  }, [setLayerTimestamp, setLayerStatusCode]);
 
   const fetchFires = useCallback(() => {
     setLoadingFires(true);
@@ -699,11 +735,12 @@ export default function ConflictMap() {
       })
       .catch(() => {
         if (mountedRef.current) setFires([]);
+        setLayerStatusCode("fires", 500);
       })
       .finally(() => {
         if (mountedRef.current) setLoadingFires(false);
       });
-  }, [setLayerTimestamp]);
+  }, [setLayerTimestamp, setLayerStatusCode]);
 
   const handleBoundsChange = useCallback((b: MapBounds) => {
     setBounds(b);
@@ -759,6 +796,7 @@ export default function ConflictMap() {
       })
       .catch(() => {
         if (mountedRef.current) setAisShips({});
+        setLayerStatusCode("maritime", 500);
       })
       .finally(() => {
         if (mountedRef.current) setLoadingMaritime(false);
@@ -772,34 +810,57 @@ export default function ConflictMap() {
     return () => clearInterval(t);
   }, [layers.maritime, bounds, fetchAis]);
 
-  // Radiation sensors: fetch on debounced bounds changes via backend proxy
+  // Radiation sensors: fetch the full global dataset once on mount (and when the layer is toggled on).
+  // We intentionally do NOT pass the viewport bbox — Safecast data is sparse and server-cached for
+  // 1 hour, so fetching by viewport would return 0 sensors whenever the user zooms into an area
+  // with no recent local measurements, causing all markers to disappear while panning/zooming.
+  const radiationFetchedRef = useRef(false);
   useEffect(() => {
-    if (!bounds) return;
+    if (radiationFetchedRef.current) return;
+    radiationFetchedRef.current = true;
     const controller = new AbortController();
-    const { lamin, lomin, lamax, lomax } = bounds;
-    const round = (v: number) => v.toFixed(3);
-    const url = `/api/radiation?bmax=${round(lamax)},${round(lomax)}&bmin=${round(
-      lamin
-    )},${round(lomin)}`;
     setLoadingRadiation(true);
-    fetch(url, { signal: controller.signal })
+    fetch("/api/radiation?bmax=90,180&bmin=-90,-180", { signal: controller.signal })
       .then((r) => r.json())
       .then((d) => {
         if (!mountedRef.current) return;
         setRadiationSensors(Array.isArray(d.sensors) ? d.sensors : []);
         if (d.timestamp) setLayerTimestamp("radiation", d.timestamp);
+        setLayerStatusCode("radiation", d.error ? 500 : 200);
       })
-      .catch(() => {
+      .catch((error: unknown) => {
         if (!mountedRef.current) return;
+        if (error instanceof DOMException && error.name === "AbortError") return;
         setRadiationSensors([]);
+        setLayerStatusCode("radiation", 500);
       })
       .finally(() => {
-        if (!mountedRef.current) return;
-        setLoadingRadiation(false);
+        if (mountedRef.current) setLoadingRadiation(false);
       });
-
     return () => controller.abort();
-  }, [bounds]);
+  }, [setLayerTimestamp, setLayerStatusCode]);
+
+  useEffect(() => {
+    if (!reloadToken) return;
+    fetchEvents();
+    fetchSeismic();
+    fetchFires();
+    if (layers.maritime && bounds) {
+      fetchAis();
+    }
+    mutateFlights();
+    // Allow radiation to re-fetch on manual reload
+    radiationFetchedRef.current = false;
+  }, [
+    reloadToken,
+    fetchEvents,
+    fetchSeismic,
+    fetchFires,
+    layers.maritime,
+    bounds,
+    fetchAis,
+    mutateFlights,
+  ]);
 
   useEffect(() => {
     fetchEvents();
@@ -1032,6 +1093,28 @@ export default function ConflictMap() {
         }))
       );
   }, [aisShipsList, wrapBounds]);
+
+  const wrappedRadiationSensors = useMemo(() => {
+    const { lomin, lomax } = wrapBounds;
+    // Use the sensor's index in the deduplicated array as the primary key component.
+    // This is the only value guaranteed to be unique regardless of whether two different
+    // sensors happen to share identical lat/lng or captured_at timestamps.
+    const filtered = radiationSensors.filter(
+      (s) =>
+        Number.isFinite(s.lat) &&
+        Number.isFinite(s.lng) &&
+        Number.isFinite(s.value)
+    );
+    const result: (RadiationSensor & { key: string })[] = [];
+    for (let i = 0; i < filtered.length; i++) {
+      const s = filtered[i];
+      const wrappedLngs = getVisibleWrappedLongitudes(s.lng, lomin, lomax);
+      for (let w = 0; w < wrappedLngs.length; w++) {
+        result.push({ ...s, lng: wrappedLngs[w], key: `rad-${i}-w${w}` });
+      }
+    }
+    return result;
+  }, [radiationSensors, wrapBounds]);
 
   /** Chokepoints at each visible longitude copy so they appear when the map wraps. */
   const wrappedChokepoints = useMemo(() => {
@@ -1341,6 +1424,12 @@ export default function ConflictMap() {
                               {f.origin || "UNK"}
                             </span>
                           </div>
+                          <div className="popup-row">
+                            <span className="popup-row-key">SRC</span>
+                            <span className="popup-row-val">
+                              {(f.source ?? "mixed").toString().toUpperCase()}
+                            </span>
+                          </div>
                         </div>
                       </Popup>
                     </Marker>
@@ -1622,21 +1711,17 @@ export default function ConflictMap() {
             </MarkerClusterGroup>
           )}
           {/* Radiation Sensors (Safecast) */}
-          {layers.radiation &&
-            radiationSensors
-              .filter(
-                (s) =>
-                  Number.isFinite(s.lat) &&
-                  Number.isFinite(s.lng) &&
-                  Number.isFinite(s.value)
-              )
-              .map((s, idx) => {
+          {layers.radiation && (
+            <MarkerClusterGroup
+              chunkedLoading
+              iconCreateFunction={radiationClusterIcon}
+              maxClusterRadius={55}
+              spiderfyOnMaxZoom
+              disableClusteringAtZoom={10}
+            >
+              {wrappedRadiationSensors.map((s) => {
                 const v = s.value;
-                const basePos = getStablePosition(
-                  `rad-${idx}`,
-                  s.lat,
-                  s.lng
-                );
+                const basePos = getStablePosition(s.key, s.lat, s.lng);
                 let className = "radiation-point-low";
                 if (v >= 0.5 && v <= 2.0) {
                   className = "radiation-point-med";
@@ -1645,22 +1730,18 @@ export default function ConflictMap() {
                 }
                 return (
                   <Marker
-                    key={`rad-${idx}`}
+                    key={s.key}
                     position={basePos}
                     icon={L.divIcon({
-                      html: `<span class="radiation-dot ${className}${
-                        v > 2.0 ? " critical-radiation-pulse" : ""
-                      }"></span>`,
+                      html: `<span class="radiation-dot ${className}${v > 2.0 ? " critical-radiation-pulse" : ""}"></span>`,
                       className: "radiation-icon-wrapper",
-                      iconSize: [14, 14],
-                      iconAnchor: [7, 7],
+                      iconSize: [16, 16],
+                      iconAnchor: [8, 8],
                     })}
                   >
                     <Popup>
                       <div className="popup-card">
-                        <div className="popup-label">
-                          SAFecast SENSOR
-                        </div>
+                        <div className="popup-label">SAFECAST SENSOR</div>
                         <div className="popup-row">
                           <span className="popup-row-key">LEVEL</span>
                           <span className="popup-row-val">
@@ -1684,6 +1765,8 @@ export default function ConflictMap() {
                   </Marker>
                 );
               })}
+            </MarkerClusterGroup>
+          )}
         </MapContainer>
 
         {/* Bottom-left: orbital tracking pill (when tracking) above layer toggle */}
@@ -1715,7 +1798,43 @@ export default function ConflictMap() {
         </div>
 
         {/* Bottom-right: zoom slider for precise control */}
-        <div className="absolute bottom-4 right-4 z-[1000] pointer-events-none">
+        <div className="absolute bottom-4 right-4 z-[1000] flex flex-col items-end gap-2 pointer-events-none">
+          {/* API error notifications */}
+          {(() => {
+            const msgs: string[] = [];
+            const keys: LayerKey[] = ["aircraft", "gdelt", "seismic", "fires", "maritime", "radiation"];
+            for (const key of keys) {
+              const code = layerStatusCodes?.[key];
+              if (typeof code === "number" && code >= 400) {
+                msgs.push(`${key.toUpperCase()} ${code}`);
+              }
+            }
+            if (aircraftApiStatus) {
+              const { opensky, adsbfi, adsblol, theairtraffic } = aircraftApiStatus;
+              if (typeof opensky === "number" && opensky >= 400) msgs.push(`OpenSky ${opensky}`);
+              if (typeof adsbfi === "number" && adsbfi >= 400) msgs.push(`adsb.fi ${adsbfi}`);
+              if (typeof adsblol === "number" && adsblol >= 400) msgs.push(`ADSB.lol ${adsblol}`);
+              if (typeof theairtraffic === "number" && theairtraffic >= 400)
+                msgs.push(`TheAirTraffic ${theairtraffic}`);
+            }
+            if (!msgs.length) return null;
+            return (
+              <div className="pointer-events-auto bg-tactical-dark/95 border border-accent-red/60 px-3 py-2 rounded-sm shadow-lg max-w-xs">
+                <div className="font-mono text-[9px] text-accent-red tracking-widest mb-1">
+                  DATA ALERT
+                </div>
+                <div className="font-mono text-[9px] text-text-secondary space-y-0.5">
+                  {msgs.slice(0, 4).map((m) => (
+                    <div key={m}>{m}</div>
+                  ))}
+                  {msgs.length > 4 && (
+                    <div>+ {msgs.length - 4} more</div>
+                  )}
+                </div>
+              </div>
+            );
+          })()}
+
           <div className="bg-tactical-dark/90 border border-panel-border px-3 py-1.5 rounded-sm shadow-lg flex items-center gap-3 pointer-events-auto">
             <span className="font-mono text-[9px] text-text-muted tracking-widest">
               ZOOM

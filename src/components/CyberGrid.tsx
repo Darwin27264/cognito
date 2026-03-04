@@ -2,6 +2,7 @@
 
 import { memo, useCallback, useEffect, useState } from "react";
 import { CYBER_POLL_MS } from "@/lib/apiConfig";
+import { useReload } from "@/context/ReloadContext";
 
 interface CyberOutageItem {
   entityCode: string;
@@ -47,6 +48,7 @@ function CyberGridInner() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [meta, setMeta] = useState<{ timestamp?: string; windowHours?: number; source?: string }>({});
+  const { reloadToken } = useReload();
 
   const fetchCyber = useCallback(async () => {
     try {
@@ -76,6 +78,11 @@ function CyberGridInner() {
     const t = setInterval(fetchCyber, CYBER_POLL_MS);
     return () => clearInterval(t);
   }, [fetchCyber]);
+
+  useEffect(() => {
+    if (!reloadToken) return;
+    fetchCyber();
+  }, [reloadToken, fetchCyber]);
 
   if (loading) {
     return (

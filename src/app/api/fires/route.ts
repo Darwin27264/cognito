@@ -81,7 +81,8 @@ export async function GET(req: NextRequest) {
   const url = `https://firms.modaps.eosdis.nasa.gov/api/area/csv/${key}/${source}/${area}/${dayRange}`;
 
   try {
-    const res = await fetch(url, FETCH_OPTS);
+    // Response can be >2MB; disable Next data cache to avoid warnings and overhead.
+    const res = await fetch(url, { cache: "no-store" });
     if (!res.ok) {
       return NextResponse.json(
         { fires: [], error: `FIRMS ${res.status}` },

@@ -363,6 +363,20 @@ body {
   line-height: 1 !important;
 }
 
+.cluster-radiation {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  border-radius: 50%;
+  background: rgba(10, 24, 10, 0.88);
+  border: 1.5px solid rgba(57, 255, 20, 0.85);
+  color: rgba(57, 255, 20, 0.97);
+  font-family: var(--font-roboto-mono), ui-monospace, monospace;
+  box-shadow: 0 0 10px rgba(57, 255, 20, 0.4), 0 0 20px rgba(57, 255, 20, 0.18);
+  text-shadow: 0 0 6px rgba(57, 255, 20, 0.5);
+}
+
 .marker-cluster {
   background: transparent !important;
 }
@@ -593,42 +607,47 @@ body {
 
 .radiation-dot {
   display: block;
-  width: 10px;
-  height: 10px;
+  width: 14px;
+  height: 14px;
   border-radius: 9999px;
+  transform: translateZ(0);
 }
 
+/* Low: solid neon green with visible glow */
 .radiation-point-low {
-  border: 1px solid rgba(57, 255, 20, 0.65);
-  background: rgba(57, 255, 20, 0.08);
+  background: rgba(57, 255, 20, 0.82);
+  border: 1.5px solid rgba(57, 255, 20, 0.95);
+  box-shadow: 0 0 6px rgba(57, 255, 20, 0.7), 0 0 12px rgba(57, 255, 20, 0.35);
 }
 
+/* Medium: amber/yellow */
 .radiation-point-med {
-  border: 1px solid rgba(234, 179, 8, 0.8);
-  background: rgba(234, 179, 8, 0.4);
-  box-shadow: 0 0 8px rgba(234, 179, 8, 0.5);
+  background: rgba(234, 179, 8, 0.88);
+  border: 1.5px solid rgba(234, 179, 8, 1);
+  box-shadow: 0 0 8px rgba(234, 179, 8, 0.75), 0 0 16px rgba(234, 179, 8, 0.4);
 }
 
+/* High: bright red, hard to miss */
 .radiation-point-high {
-  border: 1px solid rgba(255, 32, 32, 0.9);
-  background: rgba(255, 32, 32, 0.5);
-  box-shadow: 0 0 14px rgba(255, 32, 32, 0.9), 0 0 20px rgba(255, 32, 32, 0.5);
+  background: rgba(255, 50, 50, 0.92);
+  border: 2px solid #ff2020;
+  box-shadow: 0 0 10px rgba(255, 32, 32, 0.9), 0 0 22px rgba(255, 32, 32, 0.55);
 }
 
 @keyframes radiation-pulse-critical {
   0%, 100% {
     transform: scale(1);
-    opacity: 0.8;
+    box-shadow: 0 0 10px rgba(255, 32, 32, 0.9), 0 0 22px rgba(255, 32, 32, 0.55);
   }
   50% {
-    transform: scale(1.6);
-    opacity: 1;
+    transform: scale(1.5);
+    box-shadow: 0 0 18px rgba(255, 32, 32, 1), 0 0 36px rgba(255, 32, 32, 0.7);
   }
 }
 
 .critical-radiation-pulse {
   transform-origin: center;
-  animation: radiation-pulse-critical 1.3s ease-in-out infinite;
+  animation: radiation-pulse-critical 1.2s ease-in-out infinite;
 }
 
 /* ── Aircraft Tracking Panel ── */

@@ -1,7 +1,7 @@
 "use client";
 
 import { memo, useEffect, useMemo, useState } from "react";
-import { Activity, Wifi, Clock } from "lucide-react";
+import { Activity, Clock } from "lucide-react";
 import { useLayerFreshness } from "@/context/LayerFreshnessContext";
 import type { LayerFreshnessKey } from "@/context/LayerFreshnessContext";
 
@@ -71,7 +71,7 @@ const LAYER_LABELS: Record<LayerFreshnessKey, string> = {
 };
 
 export default function StatusBar() {
-  const { freshness, aircraftApiStatus } = useLayerFreshness();
+  const { freshness, aircraftApiStatus, layerStatusCodes } = useLayerFreshness();
   const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
@@ -101,20 +101,59 @@ export default function StatusBar() {
     [freshness, now]
   );
 
+  const errorDetails = useMemo(() => {
+    const messages: string[] = [];
+    if (aircraftApiStatus) {
+      const { opensky, adsbfi, adsblol, theairtraffic } = aircraftApiStatus;
+      if (typeof opensky === "number" && opensky >= 400) {
+        messages.push(`AIRCRAFT · OpenSky ${opensky}`);
+      }
+      if (typeof adsbfi === "number" && adsbfi >= 400) {
+        messages.push(`AIRCRAFT · adsb.fi ${adsbfi}`);
+      }
+      if (typeof adsblol === "number" && adsblol >= 400) {
+        messages.push(`AIRCRAFT · ADSB.lol ${adsblol}`);
+      }
+      if (typeof theairtraffic === "number" && theairtraffic >= 400) {
+        messages.push(`AIRCRAFT · TheAirTraffic ${theairtraffic}`);
+      }
+    }
+    const layerKeys: LayerFreshnessKey[] = [
+      "aircraft",
+      "gdelt",
+      "seismic",
+      "fires",
+      "orbital",
+      "maritime",
+      "radiation",
+    ];
+    for (const key of layerKeys) {
+      const code = layerStatusCodes?.[key];
+      if (typeof code === "number" && code >= 400) {
+        messages.push(`${LAYER_LABELS[key]} layer ${code}`);
+      }
+    }
+    return messages;
+  }, [aircraftApiStatus, layerStatusCodes]);
+
+  const hasErrors = errorDetails.length > 0;
+
   return (
     <footer className="flex items-center justify-between px-4 h-7 border-t border-panel-border bg-tactical-dark">
       <div className="flex items-center gap-3 flex-wrap">
         <div className="flex items-center gap-1.5">
-          <Activity className="w-3 h-3 text-accent-green" />
+          <Activity
+            className={`w-3 h-3 ${
+              hasErrors ? "text-accent-amber animate-pulse-amber" : "text-accent-green"
+            }`}
+          />
           <span className="font-mono text-[10px] text-accent-green tracking-wider">
-            SYSTEMS NOMINAL
-          </span>
-        </div>
-        <div className="w-px h-3 bg-panel-border" />
-        <div className="flex items-center gap-1.5">
-          <Wifi className="w-3 h-3 text-text-muted" />
-          <span className="font-mono text-[10px] text-text-muted tracking-wider">
-            FEEDS ACTIVE
+            <span
+              title={hasErrors ? errorDetails.join("\n") : undefined}
+              className={hasErrors ? "text-accent-amber cursor-help" : undefined}
+            >
+              {hasErrors ? "SYSTEMS DEGRADED" : "SYSTEMS NOMINAL"}
+            </span>
           </span>
         </div>
         <div className="w-px h-3 bg-panel-border" />
