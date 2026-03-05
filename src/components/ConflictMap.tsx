@@ -600,7 +600,7 @@ export default function ConflictMap() {
     fires: true,
     orbital: false,
     maritime: true,
-    radiation: true,
+    radiation: false,
   });
   const [satellitePositions, setSatellitePositions] = useState<SatellitePosition[]>([]);
   const [satellitePositionsVersion, setSatellitePositionsVersion] = useState(0);

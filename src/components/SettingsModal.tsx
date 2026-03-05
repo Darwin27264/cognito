@@ -117,21 +117,31 @@ export function SettingsModal() {
                 </span>
               </label>
             </div>
-            <div className="flex justify-end gap-3 px-4 py-4 border-t border-panel-border">
-              <button
-                type="button"
-                onClick={() => setOpen(false)}
-                className="px-3 py-1.5 font-mono text-[10px] text-text-muted hover:text-text-primary"
+            <div className="flex flex-col gap-2 px-4 py-4 border-t border-panel-border">
+              <div className="flex justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => setOpen(false)}
+                  className="px-3 py-1.5 font-mono text-[10px] text-text-muted hover:text-text-primary"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSave}
+                  className="px-3 py-1.5 font-mono text-[10px] bg-accent-amber/20 text-accent-amber border border-accent-amber/50 rounded hover:bg-accent-amber/30"
+                >
+                  Save
+                </button>
+              </div>
+              <a
+                href="https://github.com/Darwin27264/cognito"
+                target="_blank"
+                rel="noreferrer"
+                className="font-mono text-[9px] text-text-muted hover:text-accent-amber underline-offset-2 hover:underline text-right"
               >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={handleSave}
-                className="px-3 py-1.5 font-mono text-[10px] bg-accent-amber/20 text-accent-amber border border-accent-amber/50 rounded hover:bg-accent-amber/30"
-              >
-                Save
-              </button>
+                GitHub: Darwin27264/cognito
+              </a>
             </div>
           </div>
         </div>
