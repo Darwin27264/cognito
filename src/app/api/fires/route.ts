@@ -63,7 +63,10 @@ function parseFirmsCsv(csvText: string): FirePoint[] {
 
 export async function GET(req: NextRequest) {
   const { searchParams } = req.nextUrl;
-  const key = process.env.NASA_FIRMS_API_KEY;
+  // Prefer server env; fall back to user-provided key from header (for deployed dashboards).
+  const key =
+    process.env.NASA_FIRMS_API_KEY ??
+    req.headers.get("x-user-nasa-firms-key")?.trim();
   if (!key) {
     return NextResponse.json(
       { fires: [], message: "NASA_FIRMS_API_KEY not configured" },
@@ -75,21 +78,36 @@ export async function GET(req: NextRequest) {
   const south = searchParams.get("south") ?? "-90";
   const east = searchParams.get("east") ?? "180";
   const north = searchParams.get("north") ?? "90";
-  const area = `${west},${south},${east},${north}`;
+  // NASA FIRMS accepts "world" for global or west,south,east,north
+  const isWorld =
+    west === "-180" && south === "-90" && east === "180" && north === "90";
+  const area = isWorld ? "world" : `${west},${south},${east},${north}`;
   const source = "VIIRS_SNPP_NRT";
-  const dayRange = "1";
+  // Use 3-day range so we get fire data (1-day can be empty for global)
+  const dayRange = searchParams.get("days") ?? "3";
   const url = `https://firms.modaps.eosdis.nasa.gov/api/area/csv/${key}/${source}/${area}/${dayRange}`;
 
   try {
     // Response can be >2MB; disable Next data cache to avoid warnings and overhead.
     const res = await fetch(url, { cache: "no-store" });
+    const text = await res.text();
+    // If NASA returns HTML error page or JSON, we cannot parse as CSV
+    const trimmed = text.trim();
+    if (trimmed.startsWith("<") || trimmed.startsWith("{")) {
+      const errorMsg = trimmed.startsWith("{")
+        ? (JSON.parse(text) as { message?: string })?.message ?? `FIRMS ${res.status}`
+        : `FIRMS ${res.status} (invalid response)`;
+      return NextResponse.json(
+        { fires: [], error: errorMsg },
+        { headers: { "Cache-Control": "public, s-maxage=60" } }
+      );
+    }
     if (!res.ok) {
       return NextResponse.json(
         { fires: [], error: `FIRMS ${res.status}` },
         { headers: { "Cache-Control": "public, s-maxage=3600" } }
       );
     }
-    const text = await res.text();
     const parsed = parseFirmsCsv(text);
     const fires = parsed.slice(0, MAX_FIRE_POINTS);
     return NextResponse.json(

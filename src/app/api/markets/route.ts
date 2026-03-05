@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 
 export const revalidate = 60;
 
@@ -26,13 +26,13 @@ interface FinnhubQuote {
   dp: number; // percent change
 }
 
-async function fetchFromFinnhub(): Promise<MarketQuote[]> {
-  const token = process.env.FINNHUB_API_KEY;
-  if (!token) throw new Error("FINNHUB_API_KEY is not set");
+async function fetchFromFinnhub(token?: string | null): Promise<MarketQuote[]> {
+  const key = token ?? process.env.FINNHUB_API_KEY;
+  if (!key) throw new Error("FINNHUB_API_KEY is not set");
 
   const results = await Promise.all(
     TICKERS.map(async ({ symbol, name }) => {
-      const url = `https://finnhub.io/api/v1/quote?symbol=${symbol}&token=${token}`;
+      const url = `https://finnhub.io/api/v1/quote?symbol=${symbol}&token=${key}`;
       const res = await fetch(url, {
         next: { revalidate: 60 },
       });
@@ -93,8 +93,8 @@ function parseTwelveDataResponse(body: unknown): MarketQuote[] {
   });
 }
 
-async function fetchFromTwelveData(): Promise<MarketQuote[]> {
-  const apiKey = process.env.TWELVEDATA_API_KEY;
+async function fetchFromTwelveData(apiKeyOverride?: string | null): Promise<MarketQuote[]> {
+  const apiKey = apiKeyOverride ?? process.env.TWELVEDATA_API_KEY;
   if (!apiKey) throw new Error("TWELVEDATA_API_KEY is not set");
 
   const symbols = TICKERS.map((t) => t.symbol).join(",");
@@ -107,13 +107,15 @@ async function fetchFromTwelveData(): Promise<MarketQuote[]> {
   return parseTwelveDataResponse(body);
 }
 
-export async function GET() {
+export async function GET(req: NextRequest) {
+  const finnhubKey = req.headers.get("x-user-finnhub-key")?.trim() || undefined;
+  const twelveDataKey = req.headers.get("x-user-twelvedata-key")?.trim() || undefined;
   try {
     let data: MarketQuote[];
     try {
-      data = await fetchFromFinnhub();
+      data = await fetchFromFinnhub(finnhubKey);
     } catch {
-      data = await fetchFromTwelveData();
+      data = await fetchFromTwelveData(twelveDataKey);
     }
 
     const cacheControl =

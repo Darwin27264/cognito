@@ -4,6 +4,7 @@ import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { BarChart3 } from "lucide-react";
 import { MARKETS_POLL_MS } from "@/lib/apiConfig";
 import { useReload } from "@/context/ReloadContext";
+import { useApiKeys } from "@/context/ApiKeysContext";
 
 interface MarketQuote {
   symbol: string;
@@ -85,6 +86,7 @@ export default function MarketPanel() {
   const controllerRef = useRef<AbortController | null>(null);
   const requestIdRef = useRef(0);
   const { reloadToken } = useReload();
+  const { getHeaders } = useApiKeys();
 
   const fetchMarkets = useCallback(async () => {
     controllerRef.current?.abort();
@@ -98,6 +100,7 @@ export default function MarketPanel() {
       const res = await fetch("/api/markets", {
         cache: "no-store",
         signal: controller.signal,
+        headers: getHeaders(),
       });
       if (requestIdRef.current !== requestId) return;
       const json: MarketsResponse = await res.json();
@@ -118,7 +121,7 @@ export default function MarketPanel() {
         setLoading(false);
       }
     }
-  }, []);
+  }, [getHeaders]);
 
   useEffect(() => {
     const t = setTimeout(fetchMarkets, 0);

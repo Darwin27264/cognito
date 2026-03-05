@@ -1,6 +1,8 @@
-## Cognito Events Dashboard
+## Cognitio Events Dashboard
 
 Real-time geopolitical events dashboard: conflict tracking, live air and maritime traffic, markets, and curated intel — built with Next.js (App Router), React, and Leaflet.
+
+![Cognitio Dashboard](sample.png)
 
 ---
 
@@ -31,7 +33,7 @@ npm install
 
 ### Configure environment
 
-Create a `.env.local` file in the project root:
+Create a `.env.local` file in the project root (or use **Settings** in the app to enter keys in the browser; see [Settings (API keys)](#settings-api-keys)):
 
 ```bash
 cp .env.example .env.local   # or create it by hand using the table below
@@ -60,6 +62,39 @@ npm run dev
 ```
 
 Then open `http://localhost:3000` in your browser.
+
+---
+
+## Using the dashboard
+
+- **Map**: Pan and zoom the world map. Use the layer controls to toggle aircraft, ships (AIS), conflict events (GDELT), seismic activity, wildfires, satellites, chokepoints, and radiation sensors. Data refreshes automatically as you move the map.
+- **Top ticker**: Shows the current threat level (from GDELT) and live market snapshots (gold, oil, volatility, treasuries, defense, USD). Click **SETTINGS** in the ticker to manage API keys (see below).
+- **Left sidebar**: **Strategic Markets & Resources** — curated ETF/equity quotes. **Cyber / IODA** — recent internet outage signals.
+- **Right panel**: **Intel feed** — SITREP-style headlines from NewsAPI (geopolitical/military focus). Refreshes on an interval.
+- **Footer**: System status, per-layer “last updated” timestamps, and UTC clock. Use it to see which layers are live and which APIs may be degraded.
+
+### Settings (API keys)
+
+You can provide API keys in two ways:
+
+1. **Server (recommended for development)**  
+   Put keys in `.env.local` as described in [Configure environment](#configure-environment). They are used by the Next.js API routes and never sent to the browser.
+
+2. **In-app Settings**  
+   Click **SETTINGS** in the top ticker bar to open the API Keys modal. Enter keys for:
+   - **NASA FIRMS** — fires/thermal layer  
+   - **NewsAPI** — intel feed  
+   - **AIS Stream** — maritime AIS layer  
+   - **Finnhub** — markets (primary)  
+   - **Twelve Data** — markets (fallback)
+
+   **Behavior:**
+   - Server-side env vars always take priority. In-app keys are only used when the server does not have a value for that provider.
+   - Keys are stored in **session storage** by default (cleared when you close the tab).
+   - Check **“Remember in this browser”** to store keys in **localStorage** so they persist across sessions.
+   - Keys are never sent to any server except your own app’s `/api/*` routes; they are passed via request headers from the browser to your Next.js backend.
+
+Use Settings when you’re running a deployed build without env vars, or when you want to try different keys without editing `.env.local`.
 
 ---
 

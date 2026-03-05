@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 
 export const revalidate = 3600;
 
@@ -19,8 +19,9 @@ interface NewsApiResponse {
   articles: NewsApiArticle[];
 }
 
-export async function GET() {
-  const apiKey = process.env.NEWSAPI_KEY;
+export async function GET(req: NextRequest) {
+  const apiKey =
+    process.env.NEWSAPI_KEY ?? req.headers.get("x-user-newsapi-key")?.trim();
 
   if (!apiKey) {
     return NextResponse.json(

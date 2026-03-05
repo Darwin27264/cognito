@@ -1,10 +1,11 @@
 "use client";
 
 import { memo, useEffect, useState, useCallback, useRef } from "react";
-import { FileText, ExternalLink, Shield } from "lucide-react";
+import { FileText, ExternalLink, Shield, RotateCw } from "lucide-react";
 
 import { INTEL_POLL_MS } from "@/lib/apiConfig";
 import { useReload } from "@/context/ReloadContext";
+import { useApiKeys } from "@/context/ApiKeysContext";
 
 interface IntelArticle {
   title: string;
@@ -91,8 +92,8 @@ function SidebarSkeleton() {
   );
 }
 
-function fetchIntel(signal?: AbortSignal): Promise<IntelArticle[]> {
-  return fetch("/api/intel", { signal })
+function fetchIntel(signal?: AbortSignal, headers?: Record<string, string>): Promise<IntelArticle[]> {
+  return fetch("/api/intel", { signal, headers })
     .then((r) => r.json())
     .then((d) => {
       if (d.error) throw new Error(d.error);
@@ -105,14 +106,15 @@ function IntelFeed() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
-   const { reloadToken } = useReload();
+  const { reloadToken } = useReload();
+  const { getHeaders } = useApiKeys();
 
   const load = useCallback((isInitial: boolean) => {
     abortRef.current?.abort();
     const controller = new AbortController();
     abortRef.current = controller;
     if (isInitial) setLoading(true);
-    fetchIntel(controller.signal)
+    fetchIntel(controller.signal, getHeaders())
       .then((list) => {
         if (controller.signal.aborted) return;
         setArticles(list);
@@ -126,7 +128,7 @@ function IntelFeed() {
       .finally(() => {
         if (!controller.signal.aborted) setLoading(false);
       });
-  }, []);
+  }, [getHeaders]);
 
   useEffect(() => {
     load(true);
@@ -155,6 +157,15 @@ function IntelFeed() {
           <span className="font-mono text-[10px] text-text-muted">
             {articles.length} ITEMS
           </span>
+          <button
+            type="button"
+            onClick={() => load(true)}
+            disabled={loading}
+            className="shrink-0 p-1 rounded text-text-muted hover:text-accent-amber hover:bg-tactical-charcoal disabled:opacity-50 transition-colors"
+            title="Refresh news feed"
+          >
+            <RotateCw className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} />
+          </button>
           {loading && (
             <div className="w-1.5 h-1.5 bg-accent-amber animate-pulse-amber" />
           )}

@@ -2,6 +2,7 @@
 
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { TrendingUp, TrendingDown, Minus, RotateCw } from "lucide-react";
+import { SettingsModal } from "@/components/SettingsModal";
 import { COMMODITIES_POLL_MS, THREAT_LEVEL_POLL_MS } from "@/lib/apiConfig";
 import { useReload } from "@/context/ReloadContext";
 
@@ -210,6 +211,7 @@ function CommodityTicker() {
             <RotateCw className="w-3 h-3" />
             RELOAD
           </button>
+          <SettingsModal />
         </div>
       </div>
     </header>

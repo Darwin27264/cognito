@@ -3,14 +3,16 @@ import { NextRequest, NextResponse } from "next/server";
 export const revalidate = 3600;
 
 interface SafecastMeasurement {
-  id: number;
+  id?: number;
   value: number;
   unit: string;
   device_id?: number | null;
   sensor_id?: number | null;
   station_id?: number | null;
-  latitude: number | null;
-  longitude: number | null;
+  latitude?: number | null;
+  longitude?: number | null;
+  /** Some Safecast responses use nested location */
+  location?: { latitude?: number; longitude?: number } | null;
   captured_at: string;
 }
 
@@ -49,16 +51,23 @@ function toUsvPerHour(value: number, unit: string): number | null {
   return null;
 }
 
-function sensorKey(m: SafecastMeasurement): string | null {
+function getLatLon(m: SafecastMeasurement): { lat: number; lng: number } | null {
+  const lat = m.latitude ?? m.location?.latitude;
+  const lng = m.longitude ?? m.location?.longitude;
+  if (lat != null && lng != null && Number.isFinite(lat) && Number.isFinite(lng)) {
+    return { lat: Number(lat), lng: Number(lng) };
+  }
+  return null;
+}
+
+function sensorKey(m: SafecastMeasurement, lat: number, lng: number): string | null {
   const station = m.station_id != null ? `station:${m.station_id}` : null;
   const sensor = m.sensor_id != null ? `sensor:${m.sensor_id}` : null;
   const device = m.device_id != null ? `device:${m.device_id}` : null;
   if (station) return station;
   if (sensor) return sensor;
   if (device) return device;
-  if (m.latitude == null || m.longitude == null) return null;
-  // Fall back to location bucketing (~10m) to represent a "sensor" on the map.
-  return `loc:${m.latitude.toFixed(4)},${m.longitude.toFixed(4)}`;
+  return `loc:${lat.toFixed(4)},${lng.toFixed(4)}`;
 }
 
 function parseBboxParam(param: string | null, fallback: [number, number]): [number, number] {
@@ -71,60 +80,91 @@ function parseBboxParam(param: string | null, fallback: [number, number]): [numb
   return [lat, lon];
 }
 
+/** Regional centers so radiation data covers the whole globe (Safecast uses lat/lng/distance). */
+const REGIONS: { lat: number; lng: number; distance: number; perPage: number }[] = [
+  { lat: 50, lng: 10, distance: 3500, perPage: 200 },    // Europe (central)
+  { lat: 54, lng: -2, distance: 1200, perPage: 150 },    // UK / NW Europe
+  { lat: 50, lng: 25, distance: 2000, perPage: 150 },    // Eastern Europe
+  { lat: 40, lng: -100, distance: 4000, perPage: 200 },  // US / North America
+  { lat: 55, lng: -105, distance: 3000, perPage: 150 },  // Canada
+  { lat: 20, lng: -100, distance: 2500, perPage: 150 },  // Mexico / Central America
+  { lat: -15, lng: -55, distance: 3500, perPage: 200 },  // South America
+  { lat: 35, lng: 135, distance: 3500, perPage: 200 },   // Japan / East Asia
+  { lat: 5, lng: 105, distance: 3000, perPage: 150 },    // Southeast Asia
+  { lat: 22, lng: 78, distance: 2500, perPage: 150 },    // South Asia (India)
+  { lat: 55, lng: 80, distance: 3500, perPage: 150 },    // Russia / Central Asia
+  { lat: 30, lng: 45, distance: 2500, perPage: 150 },    // Middle East
+  { lat: 0, lng: 25, distance: 4000, perPage: 200 },     // Africa
+  { lat: -25, lng: 135, distance: 3000, perPage: 150 }, // Australia / Oceania
+];
+
+function buildRegionUrl(region: (typeof REGIONS)[0], page: number): string {
+  const url = new URL("https://api.safecast.org/measurements.json");
+  url.searchParams.set("per_page", String(region.perPage));
+  url.searchParams.set("order", "captured_at+desc");
+  url.searchParams.set("page", String(page));
+  url.searchParams.set("latitude", String(region.lat));
+  url.searchParams.set("longitude", String(region.lng));
+  url.searchParams.set("distance", String(region.distance));
+  return url.toString();
+}
+
+/** Global feed (no geo filter) for additional recent measurements. */
+function buildGlobalUrl(page: number): string {
+  const url = new URL("https://api.safecast.org/measurements.json");
+  url.searchParams.set("per_page", "300");
+  url.searchParams.set("order", "captured_at+desc");
+  url.searchParams.set("page", String(page));
+  return url.toString();
+}
+
+function parseMeasurementsResponse(data: unknown): SafecastMeasurement[] {
+  if (Array.isArray(data)) return data;
+  if (data && typeof data === "object" && Array.isArray((data as { measurements?: unknown }).measurements)) {
+    return (data as { measurements: SafecastMeasurement[] }).measurements;
+  }
+  return [];
+}
+
 export async function GET(req: NextRequest) {
   const { searchParams } = req.nextUrl;
 
   const [lamax, lomax] = parseBboxParam(searchParams.get("bmax"), [90, 180]);
   const [lamin, lomin] = parseBboxParam(searchParams.get("bmin"), [-90, -180]);
 
-  const baseUrl = new URL("https://api.safecast.org/measurements.json");
-  baseUrl.searchParams.set("bmax", `${lamax},${lomax}`);
-  baseUrl.searchParams.set("bmin", `${lamin},${lomin}`);
-  baseUrl.searchParams.set("per_page", "750");
-  // Keep newest first so we select the freshest reading per sensor/location.
-  baseUrl.searchParams.set("order", "captured_at+desc");
-
   try {
-    // Safecast returns "measurements" (often many per same sensor/location).
-    // To avoid stacking hundreds of identical markers, dedupe to unique sensors/locations,
-    // keeping the most recent reading for each.
     const bySensor = new Map<string, { sensor: RadiationSensor; capturedMs: number }>();
-    const MAX_PAGES = 6; // up to 4500 raw measurements (server-cached for 1h)
     const TARGET_UNIQUE = 750;
 
-    for (let page = 1; page <= MAX_PAGES; page++) {
-      const url = new URL(baseUrl.toString());
-      url.searchParams.set("page", String(page));
+    // Fetch from all regions in parallel for full global coverage (1 page per region to limit requests).
+    const regionRequests = [
+      ...REGIONS.map((r) => buildRegionUrl(r, 1)),
+      buildGlobalUrl(1),
+      buildGlobalUrl(2),
+    ];
+    const results = await Promise.allSettled(
+      regionRequests.map((url) =>
+        fetch(url, FETCH_OPTS).then((res) => {
+          if (!res.ok) throw new Error(`Safecast ${res.status}`);
+          return res.json();
+        })
+      )
+    );
 
-      const res = await fetch(url.toString(), FETCH_OPTS);
-      if (!res.ok) {
-        return NextResponse.json(
-          {
-            sensors: [],
-            count: 0,
-            timestamp: new Date().toISOString(),
-            error: `Safecast ${res.status}`,
-          },
-          {
-            headers: {
-              "Cache-Control": "public, s-maxage=3600, stale-while-revalidate=7200",
-            },
-          }
-        );
-      }
-
-      const raw: SafecastMeasurement[] = await res.json();
-      if (!Array.isArray(raw) || raw.length === 0) break;
-
+    for (const result of results) {
+      if (result.status !== "fulfilled") continue;
+      const raw = parseMeasurementsResponse(result.value);
       for (const m of raw) {
-        if (!m) continue;
-        if (m.latitude == null || m.longitude == null) continue;
-        if (!Number.isFinite(m.latitude) || !Number.isFinite(m.longitude)) continue;
+        if (!m || m.unit == null) continue;
+        const coords = getLatLon(m);
+        if (!coords) continue;
+        const { lat, lng } = coords;
+        if (lat < lamin || lng < lomin || lat > lamax || lng > lomax) continue;
 
         const usv = toUsvPerHour(Number(m.value), m.unit);
         if (usv == null) continue;
 
-        const key = sensorKey(m);
+        const key = sensorKey(m, lat, lng);
         if (!key) continue;
 
         const capturedMs = new Date(m.captured_at).getTime();
@@ -135,16 +175,14 @@ export async function GET(req: NextRequest) {
           bySensor.set(key, {
             capturedMs,
             sensor: {
-              lat: m.latitude,
-              lng: m.longitude,
+              lat,
+              lng,
               value: usv,
               capturedAt: new Date(capturedMs).toISOString(),
             },
           });
         }
       }
-
-      if (bySensor.size >= TARGET_UNIQUE) break;
     }
 
     const sensors: RadiationSensor[] = Array.from(bySensor.values())

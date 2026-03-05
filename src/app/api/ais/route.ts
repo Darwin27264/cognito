@@ -83,7 +83,9 @@ function parsePositionReport(pr: Record<string, unknown>): AisShipResponse | nul
 
 export async function GET(req: NextRequest) {
   const apiKey =
-    process.env.AISSTREAM_API_KEY ?? process.env.NEXT_PUBLIC_AISSTREAM_API_KEY;
+    process.env.AISSTREAM_API_KEY ??
+    process.env.NEXT_PUBLIC_AISSTREAM_API_KEY ??
+    req.headers.get("x-user-aisstream-key")?.trim();
   if (!apiKey) {
     return NextResponse.json(
       { ships: [], error: "AISSTREAM_API_KEY not configured" },

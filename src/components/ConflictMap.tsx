@@ -5,6 +5,7 @@ import useSWR from "swr";
 import { getSatelliteInfo } from "tle.js";
 import { useLayerFreshness } from "@/context/LayerFreshnessContext";
 import { useReload } from "@/context/ReloadContext";
+import { useApiKeys } from "@/context/ApiKeysContext";
 import {
   FLIGHTS_POLL_MS,
   GDELT_POLL_MS,
@@ -14,6 +15,7 @@ import {
   INITIAL_LOAD_TIMEOUT_MS,
   AIS_POLL_MS,
 } from "@/lib/apiConfig";
+import { formatTimeAgo, formatExactTime } from "@/lib/formatTimeAgo";
 import {
   MapContainer,
   TileLayer,
@@ -26,7 +28,7 @@ import {
 } from "react-leaflet";
 import MarkerClusterGroup from "react-leaflet-cluster";
 import L from "leaflet";
-import { Radio, AlertTriangle, ExternalLink, X, Crosshair, Loader2 } from "lucide-react";
+import { Radio, ExternalLink, X, Crosshair, Loader2 } from "lucide-react";
 import "leaflet/dist/leaflet.css";
 
 // ---------------------------------------------------------------------------
@@ -169,7 +171,7 @@ const STRATEGIC_CHOKEPOINTS: Chokepoint[] = [
 
 const VELOCITY_VECTOR_SECONDS = 120;
 const SATELLITE_VELOCITY_VECTOR_MS = 120_000;
-const BOUNDS_DEBOUNCE_MS = 300;
+const BOUNDS_DEBOUNCE_MS = 500;
 const VIEWPORT_CULL_BUFFER_DEG = 2;
 const VELOCITY_VECTOR_MIN_ZOOM = 8;
 
@@ -583,6 +585,7 @@ export default function ConflictMap() {
   const [visibleLngRange, setVisibleLngRange] = useState<{ lomin: number; lomax: number } | null>(null);
   const [mapZoom, setMapZoom] = useState(3);
   const {
+    freshness,
     setLayerTimestamp,
     setAircraftApiStatus,
     setLayerStatusCode,
@@ -597,7 +600,7 @@ export default function ConflictMap() {
     fires: true,
     orbital: false,
     maritime: true,
-    radiation: false,
+    radiation: true,
   });
   const [satellitePositions, setSatellitePositions] = useState<SatellitePosition[]>([]);
   const [satellitePositionsVersion, setSatellitePositionsVersion] = useState(0);
@@ -610,8 +613,14 @@ export default function ConflictMap() {
   const [radiationSensors, setRadiationSensors] = useState<RadiationSensor[]>([]);
   const [loadingRadiation, setLoadingRadiation] = useState(false);
   const { reloadToken } = useReload();
+  const { getHeaders } = useApiKeys();
+  const getHeadersRef = useRef(getHeaders);
+  getHeadersRef.current = getHeaders;
 
-  const fetcher = useCallback((url: string) => fetch(url).then((r) => r.json()), []);
+  const fetcher = useCallback(
+    (url: string) => fetch(url, { headers: getHeaders() }).then((r) => r.json()),
+    [getHeaders]
+  );
   const flightsKey = useMemo(() => {
     if (!bounds) return null;
     const round = (v: number) => v.toFixed(2);
@@ -726,7 +735,7 @@ export default function ConflictMap() {
 
   const fetchFires = useCallback(() => {
     setLoadingFires(true);
-    fetch("/api/fires")
+    fetch("/api/fires", { headers: getHeaders() })
       .then((r) => r.json())
       .then((d) => {
         if (!mountedRef.current) return;
@@ -740,7 +749,7 @@ export default function ConflictMap() {
       .finally(() => {
         if (mountedRef.current) setLoadingFires(false);
       });
-  }, [setLayerTimestamp, setLayerStatusCode]);
+  }, [setLayerTimestamp, setLayerStatusCode, getHeaders]);
 
   const handleBoundsChange = useCallback((b: MapBounds) => {
     setBounds(b);
@@ -771,7 +780,7 @@ export default function ConflictMap() {
     const round = (v: number) => v.toFixed(4);
     const url = `/api/ais?lamin=${round(lamin)}&lomin=${round(lomin)}&lamax=${round(lamax)}&lomax=${round(lomax)}`;
     setLoadingMaritime(true);
-    fetch(url)
+    fetch(url, { headers: getHeaders() })
       .then((r) => r.json())
       .then((d) => {
         if (!mountedRef.current) return;
@@ -801,7 +810,7 @@ export default function ConflictMap() {
       .finally(() => {
         if (mountedRef.current) setLoadingMaritime(false);
       });
-  }, [bounds]);
+  }, [bounds, getHeaders]);
 
   useEffect(() => {
     if (!layers.maritime || !bounds) return;
@@ -810,35 +819,37 @@ export default function ConflictMap() {
     return () => clearInterval(t);
   }, [layers.maritime, bounds, fetchAis]);
 
-  // Radiation sensors: fetch the full global dataset once on mount (and when the layer is toggled on).
-  // We intentionally do NOT pass the viewport bbox — Safecast data is sparse and server-cached for
-  // 1 hour, so fetching by viewport would return 0 sensors whenever the user zooms into an area
-  // with no recent local measurements, causing all markers to disappear while panning/zooming.
-  const radiationFetchedRef = useRef(false);
+  // Radiation sensors: fetch on mount and when user clicks Reload. Use ref for getHeaders so
+  // we don't re-run this effect when context updates (e.g. fire timestamp), which would trigger
+  // a second fetch that can fail and overwrite good data.
   useEffect(() => {
-    if (radiationFetchedRef.current) return;
-    radiationFetchedRef.current = true;
     const controller = new AbortController();
     setLoadingRadiation(true);
-    fetch("/api/radiation?bmax=90,180&bmin=-90,-180", { signal: controller.signal })
+    fetch("/api/radiation?bmax=90,180&bmin=-90,-180", {
+      signal: controller.signal,
+      headers: getHeadersRef.current(),
+    })
       .then((r) => r.json())
       .then((d) => {
         if (!mountedRef.current) return;
-        setRadiationSensors(Array.isArray(d.sensors) ? d.sensors : []);
+        // Only update sensors on success; never overwrite with empty when server returned an error
+        if (!d.error && Array.isArray(d.sensors)) {
+          setRadiationSensors(d.sensors);
+        }
         if (d.timestamp) setLayerTimestamp("radiation", d.timestamp);
         setLayerStatusCode("radiation", d.error ? 500 : 200);
       })
       .catch((error: unknown) => {
         if (!mountedRef.current) return;
         if (error instanceof DOMException && error.name === "AbortError") return;
-        setRadiationSensors([]);
+        // Don't clear existing sensors on fetch failure — keep last good data
         setLayerStatusCode("radiation", 500);
       })
       .finally(() => {
         if (mountedRef.current) setLoadingRadiation(false);
       });
     return () => controller.abort();
-  }, [setLayerTimestamp, setLayerStatusCode]);
+  }, [reloadToken, setLayerTimestamp, setLayerStatusCode]);
 
   useEffect(() => {
     if (!reloadToken) return;
@@ -849,8 +860,6 @@ export default function ConflictMap() {
       fetchAis();
     }
     mutateFlights();
-    // Allow radiation to re-fetch on manual reload
-    radiationFetchedRef.current = false;
   }, [
     reloadToken,
     fetchEvents,
@@ -941,11 +950,17 @@ export default function ConflictMap() {
   }, [updateSatellitePositions]);
 
 
+  /** Core data ready: bounds from map + all four main feeds loaded. Ensures flights have a key before we consider "ready". */
+  const coreDataReady =
+    bounds !== null &&
+    !loadingEvents &&
+    !loadingFlights &&
+    !loadingSeismic &&
+    !loadingFires;
+
   useEffect(() => {
-    if (!loadingEvents && !loadingFlights && !loadingSeismic && !loadingFires) {
-      setInitialLoad(false);
-    }
-  }, [loadingEvents, loadingFlights, loadingSeismic, loadingFires]);
+    if (coreDataReady) setInitialLoad(false);
+  }, [coreDataReady]);
 
   /** Dismiss initial-load overlay after max wait so the map is never stuck if a feed never resolves. */
   useEffect(() => {
@@ -1045,46 +1060,69 @@ export default function ConflictMap() {
     return { lomin: -180, lomax: 180 };
   }, [visibleLngRange, bounds]);
 
-  // Expand markers to wrapped longitudes so data appears in every visible world copy
+  /** In-view filter: only include markers within bounds + buffer to reduce DOM when zoomed out. */
+  const inView = useMemo(() => {
+    if (!bounds) return () => true;
+    const pad = VIEWPORT_CULL_BUFFER_DEG;
+    const { lamin, lomin, lamax, lomax } = bounds;
+    return (lat: number, lng: number) =>
+      lat >= lamin - pad &&
+      lat <= lamax + pad &&
+      lng >= lomin - pad &&
+      lng <= lomax + pad;
+  }, [bounds]);
+
+  // Expand markers to wrapped longitudes; only include markers in view for performance when zoomed out
   const wrappedGdeltMarkers = useMemo(() => {
     const { lomin, lomax } = wrapBounds;
-    return gdeltMarkers.flatMap((e) =>
-      getVisibleWrappedLongitudes(e.lng, lomin, lomax).map((lngW) => ({
-        ...e,
-        lng: lngW,
-        key: `${e.key}-w${lngW}`,
-      }))
-    );
-  }, [gdeltMarkers, wrapBounds]);
+    return gdeltMarkers
+      .filter((e) => inView(e.lat, e.lng))
+      .flatMap((e) =>
+        getVisibleWrappedLongitudes(e.lng, lomin, lomax).map((lngW) => ({
+          ...e,
+          lng: lngW,
+          key: `${e.key}-w${lngW}`,
+        }))
+      );
+  }, [gdeltMarkers, wrapBounds, inView]);
 
   const wrappedSeismicMarkers = useMemo(() => {
     const { lomin, lomax } = wrapBounds;
-    return seismicMarkers.flatMap((s) =>
-      getVisibleWrappedLongitudes(s.lng, lomin, lomax).map((lngW) => ({
-        ...s,
-        lng: lngW,
-        key: `${s.key}-w${lngW}`,
-      }))
-    );
-  }, [seismicMarkers, wrapBounds]);
+    return seismicMarkers
+      .filter((s) => inView(s.lat, s.lng))
+      .flatMap((s) =>
+        getVisibleWrappedLongitudes(s.lng, lomin, lomax).map((lngW) => ({
+          ...s,
+          lng: lngW,
+          key: `${s.key}-w${lngW}`,
+        }))
+      );
+  }, [seismicMarkers, wrapBounds, inView]);
 
   const wrappedFireMarkers = useMemo(() => {
     const { lomin, lomax } = wrapBounds;
-    return fireMarkers.flatMap((f) =>
-      getVisibleWrappedLongitudes(f.lon, lomin, lomax).map((lngW) => ({
-        ...f,
-        lon: lngW,
-        key: `${f.key}-w${lngW}`,
-      }))
-    );
-  }, [fireMarkers, wrapBounds]);
+    return fireMarkers
+      .filter((f) => inView(f.lat, f.lon))
+      .flatMap((f) =>
+        getVisibleWrappedLongitudes(f.lon, lomin, lomax).map((lngW) => ({
+          ...f,
+          lon: lngW,
+          key: `${f.key}-w${lngW}`,
+        }))
+      );
+  }, [fireMarkers, wrapBounds, inView]);
 
   const aisShipsList = useMemo(() => Object.values(aisShips), [aisShips]);
 
   const wrappedAisShips = useMemo(() => {
     const { lomin, lomax } = wrapBounds;
     return aisShipsList
-      .filter((ship) => Number.isFinite(ship.lat) && Number.isFinite(ship.lng))
+      .filter(
+        (ship) =>
+          Number.isFinite(ship.lat) &&
+          Number.isFinite(ship.lng) &&
+          inView(ship.lat, ship.lng)
+      )
       .flatMap((ship) =>
         getVisibleWrappedLongitudes(ship.lng, lomin, lomax).map((lngW) => ({
           ...ship,
@@ -1092,18 +1130,16 @@ export default function ConflictMap() {
           key: `ais-${ship.mmsi}-w${lngW}`,
         }))
       );
-  }, [aisShipsList, wrapBounds]);
+  }, [aisShipsList, wrapBounds, inView]);
 
   const wrappedRadiationSensors = useMemo(() => {
     const { lomin, lomax } = wrapBounds;
-    // Use the sensor's index in the deduplicated array as the primary key component.
-    // This is the only value guaranteed to be unique regardless of whether two different
-    // sensors happen to share identical lat/lng or captured_at timestamps.
     const filtered = radiationSensors.filter(
       (s) =>
         Number.isFinite(s.lat) &&
         Number.isFinite(s.lng) &&
-        Number.isFinite(s.value)
+        Number.isFinite(s.value) &&
+        inView(s.lat, s.lng)
     );
     const result: (RadiationSensor & { key: string })[] = [];
     for (let i = 0; i < filtered.length; i++) {
@@ -1114,7 +1150,7 @@ export default function ConflictMap() {
       }
     }
     return result;
-  }, [radiationSensors, wrapBounds]);
+  }, [radiationSensors, wrapBounds, inView]);
 
   /** Chokepoints at each visible longitude copy so they appear when the map wraps. */
   const wrappedChokepoints = useMemo(() => {
@@ -1272,12 +1308,19 @@ export default function ConflictMap() {
 
       {/* Map area */}
       <div className="flex-1 relative min-h-0">
-        {initialLoad && loadingEvents && loadingFlights && loadingSeismic && loadingFires && (
-          <div className="absolute inset-0 z-[1000] flex items-center justify-center bg-tactical-black/80">
+        {initialLoad && (
+          <div
+            className="absolute inset-0 z-[1100] flex flex-col items-center justify-center bg-tactical-black/90 pointer-events-auto"
+            aria-live="polite"
+            aria-busy="true"
+          >
             <div className="flex items-center gap-2 font-mono text-xs text-accent-amber">
-              <AlertTriangle className="w-4 h-4 animate-pulse-amber" />
+              <Loader2 className="w-5 h-5 animate-spin" />
               LOADING THEATER DATA...
             </div>
+            <p className="font-mono text-[10px] text-text-muted mt-2 max-w-[240px] text-center">
+              Fetching map layers. The map will become interactive when ready.
+            </p>
           </div>
         )}
 
@@ -1331,6 +1374,9 @@ export default function ConflictMap() {
                           SOURCE ARTICLE
                         </a>
                       )}
+                      <div className="popup-meta popup-freshness mt-1.5 pt-1.5 border-t border-panel-border">
+                        Data refreshed {formatTimeAgo(freshness.gdelt)} · {formatExactTime(freshness.gdelt)}
+                      </div>
                     </div>
                   </Popup>
                 </Marker>
@@ -1430,6 +1476,9 @@ export default function ConflictMap() {
                               {(f.source ?? "mixed").toString().toUpperCase()}
                             </span>
                           </div>
+                          <div className="popup-meta popup-freshness mt-1.5 pt-1.5 border-t border-panel-border">
+                            Data refreshed {formatTimeAgo(freshness.aircraft)} · {formatExactTime(freshness.aircraft)}
+                          </div>
                         </div>
                       </Popup>
                     </Marker>
@@ -1519,6 +1568,9 @@ export default function ConflictMap() {
                           USGS DETAIL
                         </a>
                       )}
+                      <div className="popup-meta popup-freshness mt-1.5 pt-1.5 border-t border-panel-border">
+                        Data refreshed {formatTimeAgo(freshness.seismic)} · {formatExactTime(freshness.seismic)}
+                      </div>
                     </div>
                   </Popup>
                 </Marker>
@@ -1554,6 +1606,9 @@ export default function ConflictMap() {
                           <span className="popup-row-val">{fire.confidence}</span>
                         </div>
                       )}
+                      <div className="popup-meta popup-freshness mt-1.5 pt-1.5 border-t border-panel-border">
+                        Data refreshed {formatTimeAgo(freshness.fires)} · {formatExactTime(freshness.fires)}
+                      </div>
                     </div>
                   </Popup>
                 </Marker>
@@ -1616,6 +1671,9 @@ export default function ConflictMap() {
                       <span className="popup-row-val">
                         {wrapped.lat.toFixed(4)}°, {wrapped.lng.toFixed(4)}°
                       </span>
+                    </div>
+                    <div className="popup-meta popup-freshness mt-1.5 pt-1.5 border-t border-panel-border">
+                      Data refreshed {formatTimeAgo(freshness.orbital)} · {formatExactTime(freshness.orbital)}
                     </div>
                   </div>
                 </Popup>
@@ -1704,6 +1762,9 @@ export default function ConflictMap() {
                           {ship.navStatus ?? "UNK"}
                         </span>
                       </div>
+                      <div className="popup-meta popup-freshness mt-1.5 pt-1.5 border-t border-panel-border">
+                        Data refreshed {formatTimeAgo(freshness.maritime)} · {formatExactTime(freshness.maritime)}
+                      </div>
                     </div>
                   </Popup>
                 </Marker>
@@ -1759,6 +1820,9 @@ export default function ConflictMap() {
                               minute: "2-digit",
                             })}
                           </span>
+                        </div>
+                        <div className="popup-meta popup-freshness mt-1.5 pt-1.5 border-t border-panel-border">
+                          Layer refreshed {formatTimeAgo(freshness.radiation)} · {formatExactTime(freshness.radiation)}
                         </div>
                       </div>
                     </Popup>

@@ -9,6 +9,7 @@ import { CyberGridSkeleton } from "@/components/CyberGrid";
 import StatusBar from "@/components/StatusBar";
 import { LayerFreshnessProvider } from "@/context/LayerFreshnessContext";
 import { ReloadProvider } from "@/context/ReloadContext";
+import { ApiKeysProvider } from "@/context/ApiKeysContext";
 
 const MapSkeleton = memo(function MapSkeleton() {
   return (
@@ -66,9 +67,10 @@ const CyberGrid = dynamic(() => import("@/components/CyberGrid"), {
 
 export default function Dashboard() {
   return (
-    <LayerFreshnessProvider>
-      <ReloadProvider>
-        <div className="flex flex-col h-screen overflow-hidden">
+    <ApiKeysProvider>
+      <LayerFreshnessProvider>
+        <ReloadProvider>
+          <div className="flex flex-col h-screen overflow-hidden">
           <CommodityTicker />
 
           <main className="flex-1 grid grid-cols-1 lg:grid-cols-[1.6fr_minmax(0,8.4fr)_2fr] min-h-0">
@@ -95,8 +97,9 @@ export default function Dashboard() {
           </main>
 
           <StatusBar />
-        </div>
-      </ReloadProvider>
-    </LayerFreshnessProvider>
+          </div>
+        </ReloadProvider>
+      </LayerFreshnessProvider>
+    </ApiKeysProvider>
   );
 }
